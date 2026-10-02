@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.part
+*.tmp
+
+recordings/
+events/
+metadata/
+*.env
+.env
