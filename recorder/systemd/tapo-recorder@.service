@@ -1,0 +1,14 @@
+[Unit]
+Description=Home Camera Recorder (%i)
+After=default.target
+Wants=default.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/home-camera/%i.env
+ExecStart=%h/Home-camera/recorder/record.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
