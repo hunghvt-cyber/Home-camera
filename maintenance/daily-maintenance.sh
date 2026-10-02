@@ -3,9 +3,9 @@ set -euo pipefail
 ROOT="${TAPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 STATE="${TAPO_STATE_DIR:-$ROOT/state/daily-maintenance}"
 CONF="${TAPO_MAINTENANCE_CONF:-$ROOT/config/daily-maintenance.conf}"
-APPLY="${TAPO_MAINTENANCE_APPLY:-0}"
 mkdir -p "$STATE"
 [ -f "$CONF" ] && . "$CONF"
+APPLY="${TAPO_MAINTENANCE_APPLY:-0}"
 exec 9>"$STATE/maintenance.lock"; flock -n 9 || exit 2
 status=PASS; backup=SKIPPED; retention=SKIPPED
 if [ -n "${BACKUP_COMMAND:-}" ]; then
