@@ -5,7 +5,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=%h/.config/home-camera/%i.env
-ExecStart=%h/Home-camera/event-logger/event_logger.py
+ExecStart=/usr/bin/python3 %h/Home-camera/event-logger/event_logger.py
 Restart=always
 RestartSec=5
 [Install]
