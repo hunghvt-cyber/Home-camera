@@ -1,0 +1,9 @@
+[Unit]
+Description=Run Home Camera maintenance daily
+[Timer]
+OnCalendar=*-*-* 01:30:00
+Persistent=true
+RandomizedDelaySec=5min
+Unit=tapo-daily-maintenance.service
+[Install]
+WantedBy=timers.target
