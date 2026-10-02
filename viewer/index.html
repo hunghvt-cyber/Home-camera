@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tapo Viewer</title>
+    <style>
+        body { font-family: sans-serif; margin: 16px; }
+        #toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        #timeline-wrap { position: relative; overflow: hidden; border: 1px solid #ccc; margin: 10px 0; }
+        #timeline { width: 100%; height: 60px; background: #eee; position: relative; cursor: crosshair; margin: 0; border: 0; overflow: visible; user-select: none; touch-action: none; }
+        #timeline-content { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; }
+        #timeline-labels { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 4px; background: #f7f7f7; }
+        .gap { position: absolute; height: 100%; background: #d8d8d8; opacity: .65; }
+        .segment { position: absolute; height: 100%; background: #007bff; border-left: 1px solid white; box-sizing: border-box; cursor: pointer; }
+        .event { position: absolute; top: 0; width: 3px; height: 100%; background: #e6a700; z-index: 5; cursor: pointer; }
+        #playhead { position: absolute; top: 0; height: 100%; width: 2px; background: red; pointer-events: none; z-index: 10; }
+        #status { min-height: 1.5em; margin: 8px 0; }
+        #player { width: 100%; }
+        #timeline-viewport { position: relative; height: 18px; overflow: hidden; }
+        #timeline-viewport input { width: 100%; }
+
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <select id="cam">
+            <option value="cam1">Cam1</option>
+            <option value="cam2">Cam2</option>
+        </select>
+        <input type="date" id="date" value="">
+        <button onclick="load()">Load</button>
+        <button onclick="setZoom(1)">24h</button>
+        <button onclick="setZoom(4)">6h</button>
+        <button onclick="setZoom(24)">1h</button>
+        <button onclick="setZoom(96)">15m</button>
+        <button onclick="setZoom(288)">5m</button>
+        <button onclick="setZoom(1440)">1m</button>
+        <button onclick="setZoom(3600)">24s</button>
+        <button onclick="setZoom(8640)">10s</button>
+    </div>
+    <div id="status"></div>
+    <div id="timeline-wrap">
+        <div id="timeline">
+            <div id="timeline-content"><div id="playhead"></div></div>
+        </div>
+        <div id="timeline-labels"><span id="label-left"></span><span id="label-center"></span><span id="label-right"></span></div>
+    </div>
+    <video id="player" controls></video>
+
+    <script>
+        const LOCAL_OFFSET = "+07:00";
+        const DAY_SECONDS = 24 * 60 * 60;
+
+        let segments = [];
+        let events = [];
+        let currentSegment = null;
+        let zoom = 1;
+        let viewStart = 0;
+        let dragStartX = null;
+        let dragViewStart = 0;
+        let suppressClick = false;
+
+        function dayStart(date) {
+            return new Date(date + "T00:00:00" + LOCAL_OFFSET);
+        }
+
+        function timelineSeconds(timestamp, date) {
+            return (new Date(timestamp) - dayStart(date)) / 1000;
+        }
+
+        function setStatus(text) {
+            document.getElementById("status").textContent = text || "";
+        }
+
+        function setPlayhead(seconds) {
+            const clamped = Math.max(0, Math.min(DAY_SECONDS, seconds));
+            document.getElementById("playhead").style.left =
+                ((clamped / DAY_SECONDS) * 100) + "%";
+        }
+
+        function visibleSeconds() {
+            return DAY_SECONDS / zoom;
+        }
+
+        function screenSecondsFromX(clientX) {
+            const rect = document.getElementById("timeline").getBoundingClientRect();
+            const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            return viewStart + fraction * visibleSeconds();
+        }
+
+        function xFromSeconds(seconds) {
+            return ((seconds - viewStart) / visibleSeconds()) * 100;
+        }
+
+        function formatClock(seconds) {
+            seconds = Math.max(0, Math.min(DAY_SECONDS - 1, seconds));
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            return [h, m, s].map((v, i) => i === 0 ? String(v).padStart(2, "0") : String(v).padStart(2, "0")).join(":");
+        }
+
+        function clampView() {
+            viewStart = Math.max(0, Math.min(DAY_SECONDS - visibleSeconds(), viewStart));
+        }
+
+        function renderTimeline(date) {
+            clampView();
+            const tl = document.getElementById("timeline");
+            const content = document.getElementById("timeline-content");
+            content.innerHTML = '<div id="playhead"></div>';
+
+            let cursor = viewStart;
+            segments.forEach((seg) => {
+                const segStart = timelineSeconds(seg.start, date);
+                if (segStart > cursor) {
+                    const gapEnd = Math.min(segStart, viewStart + visibleSeconds());
+                    if (gapEnd > cursor) {
+                        const gap = document.createElement("div");
+                        gap.className = "gap";
+                        gap.style.left = xFromSeconds(Math.max(cursor, viewStart)) + "%";
+                        gap.style.width = ((gapEnd - Math.max(cursor, viewStart)) / visibleSeconds() * 100) + "%";
+                        content.appendChild(gap);
+                    }
+                }
+                cursor = Math.max(cursor, segStart + Number(seg.duration || 0));
+                const start = timelineSeconds(seg.start, date);
+                const end = start + Number(seg.duration || 0);
+                if (end <= viewStart || start >= viewStart + visibleSeconds()) return;
+
+                const div = document.createElement("div");
+                div.className = "segment" + (seg.local_available ? "" : " archive");
+                div.style.left = xFromSeconds(start) + "%";
+                div.style.width = Math.max(0, (Number(seg.duration || 0) / visibleSeconds()) * 100) + "%";
+                div.title = seg.file + (seg.local_available ? "" : " (archive)");
+                div.onclick = (e) => {
+                    e.stopPropagation();
+                    if (!suppressClick) playSegment(seg, 0);
+                };
+                content.appendChild(div);
+            });
+
+            events.forEach((event) => {
+                if (!event.resolved && !event.archive_candidate && !event.segment) return;
+                const seconds = timelineSeconds(event.timestamp, date);
+                if (seconds < viewStart || seconds >= viewStart + visibleSeconds()) return;
+
+                const marker = document.createElement("div");
+                marker.className = "event";
+                marker.style.left = xFromSeconds(seconds) + "%";
+                marker.title = event.timestamp + " → " + event.segment;
+                marker.onclick = (e) => {
+                    e.stopPropagation();
+                    if (!suppressClick) playEvent(event);
+                };
+                content.appendChild(marker);
+            });
+
+            const center = viewStart + visibleSeconds() / 2;
+            document.getElementById("label-left").textContent = formatClock(viewStart);
+            document.getElementById("label-center").textContent = formatClock(center);
+            document.getElementById("label-right").textContent = formatClock(viewStart + visibleSeconds());
+        }
+
+        function setZoom(level, anchorSeconds = null) {
+            const oldVisible = visibleSeconds();
+            const anchor = anchorSeconds === null ? viewStart + oldVisible / 2 : anchorSeconds;
+            zoom = Math.max(1, Math.min(1440, level));
+            const nextVisible = visibleSeconds();
+            viewStart = anchor - nextVisible / 2;
+            clampView();
+            renderTimeline(document.getElementById("date").value);
+        }
+
+        function panBySeconds(delta) {
+            viewStart += delta;
+            clampView();
+            renderTimeline(document.getElementById("date").value);
+        }
+
+        async function load() {
+            const cam = document.getElementById("cam").value;
+            const date = document.getElementById("date").value;
+            setStatus("Loading…");
+
+            try {
+                const res = await fetch(
+                    "/api/metadata?cam=" +
+                    encodeURIComponent(cam) +
+                    "&date=" +
+                    encodeURIComponent(date)
+                );
+                if (!res.ok) throw new Error("HTTP " + res.status);
+
+                const data = await res.json();
+                segments = data.segments || [];
+                events = data.events || [];
+                currentSegment = null;
+
+                renderTimeline(date);
+                setStatus(
+                    segments.length + " segments, " +
+                    events.filter(e => e.resolved).length + " events, " +
+                    segments.filter(s => !s.local_available).length + " archive-only segments"
+                );
+            } catch (err) {
+                segments = [];
+                events = [];
+                currentSegment = null;
+                renderTimeline(date);
+                setStatus("Load failed: " + err.message);
+            }
+        }
+
+        function playLocalSegment(segment, offset) {
+            const player = document.getElementById("player");
+            currentSegment = segment;
+
+            const seek = () => {
+                const safeOffset = Math.max(0, Math.min(Number(offset) || 0, Number(segment.duration) || 0));
+                try { player.currentTime = safeOffset; } catch (_) {}
+                player.play().catch(() => {});
+            };
+
+            player.src = "/" + segment.relative_path;
+            player.addEventListener("loadedmetadata", seek, { once: true });
+            player.load();
+        }
+
+        async function playSegment(segment, offset) {
+            if (segment.local_available) {
+                playLocalSegment(segment, offset);
+                return;
+            }
+
+            setStatus("Downloading archive: " + segment.file);
+            try {
+                const response = await fetch("/api/archive?cam=" +
+                    encodeURIComponent(document.getElementById("cam").value) +
+                    "&segment=" + encodeURIComponent(segment.file));
+                const data = await response.json();
+                if (!response.ok || !data.ok) throw new Error(data.error || "archive unavailable");
+
+                const downloaded = data.metadata;
+                const index = segments.findIndex(s => s.file === segment.file);
+                if (index >= 0) segments[index] = downloaded;
+                renderTimeline(document.getElementById("date").value);
+                playLocalSegment(downloaded, offset);
+                setStatus("Playing archive: " + segment.file);
+            } catch (err) {
+                setStatus("Archive unavailable: " + err.message);
+            }
+        }
+
+        async function playEvent(event) {
+            const segmentName = event.segment || event.archive_candidate;
+            if (!segmentName) {
+                setStatus("Event has no recording segment");
+                return;
+            }
+
+            let segment = segments.find(
+                s => s.relative_path === segmentName || s.file === segmentName
+            );
+
+            if (segment) {
+                playSegment(segment, event.offset_seconds || 0);
+                if (segment.local_available) setStatus("Event: " + event.timestamp);
+                return;
+            }
+
+            if (!event.archive_candidate) {
+                setStatus("Recording unavailable: " + segmentName);
+                return;
+            }
+
+            setStatus("Downloading archive: " + event.archive_candidate);
+
+            try {
+                const response = await fetch(
+                    "/api/archive?cam=" +
+                    encodeURIComponent(event.camera) +
+                    "&segment=" +
+                    encodeURIComponent(event.archive_candidate)
+                );
+                const data = await response.json();
+
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.error || "archive unavailable");
+                }
+
+                segment = data.metadata;
+                segments.push(segment);
+                segments.sort((a, b) => a.start.localeCompare(b.start));
+                renderTimeline(document.getElementById("date").value);
+                playLocalSegment(segment, event.offset_seconds || 0);
+                setStatus("Playing archive: " + event.archive_candidate);
+            } catch (err) {
+                setStatus("Archive unavailable: " + err.message);
+            }
+        }
+
+        function clickTimeline(e) {
+            if (suppressClick) {
+                suppressClick = false;
+                return;
+            }
+            const date = document.getElementById("date").value;
+            const seconds = screenSecondsFromX(e.clientX);
+            setPlayhead(seconds);
+            const target = new Date(dayStart(date).getTime() + seconds * 1000);
+
+            const segment = segments.find(seg => {
+                const start = new Date(seg.start);
+                const end = new Date(seg.end);
+                return start <= target && target < end;
+            });
+
+            if (!segment) {
+                currentSegment = null;
+                setStatus("No recording at selected time");
+                return;
+            }
+
+            playSegment(segment, (target - new Date(segment.start)) / 1000);
+        }
+
+        function updatePlayhead() {
+            if (!currentSegment) return;
+            const date = document.getElementById("date").value;
+            const seconds = timelineSeconds(currentSegment.start, date) +
+                document.getElementById("player").currentTime;
+            if (seconds >= viewStart && seconds <= viewStart + visibleSeconds()) {
+                setPlayhead(seconds);
+            }
+        }
+
+        function beginPan(e) {
+            dragStartX = e.clientX;
+            dragViewStart = viewStart;
+            suppressClick = false;
+            document.getElementById("timeline").setPointerCapture(e.pointerId);
+        }
+
+        function movePan(e) {
+            if (dragStartX === null) return;
+            const rect = document.getElementById("timeline").getBoundingClientRect();
+            const delta = (e.clientX - dragStartX) / rect.width * visibleSeconds();
+            if (Math.abs(e.clientX - dragStartX) > 4) suppressClick = true;
+            viewStart = dragViewStart - delta;
+            clampView();
+            renderTimeline(document.getElementById("date").value);
+        }
+
+        function endPan() {
+            dragStartX = null;
+        }
+
+        const timeline = document.getElementById("timeline");
+        timeline.addEventListener("pointerdown", beginPan);
+        timeline.addEventListener("pointermove", movePan);
+        timeline.addEventListener("pointerup", endPan);
+        timeline.addEventListener("pointercancel", endPan);
+        timeline.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            const anchor = screenSecondsFromX(e.clientX);
+            const factor = e.deltaY < 0 ? 2 : 0.5;
+            setZoom(Math.max(1, Math.min(1440, zoom * factor)), anchor);
+        }, { passive: false });
+
+        document.getElementById("player").addEventListener("timeupdate", () => {
+            if (!currentSegment) return;
+
+            const date = document.getElementById("date").value;
+            const seconds =
+                timelineSeconds(currentSegment.start, date) +
+                document.getElementById("player").currentTime;
+            setPlayhead(seconds);
+        });
+
+        document.getElementById("date").addEventListener("change", () => {
+            zoom = 1;
+            viewStart = 0;
+            load();
+        });
+    </script>
+</body>
+</html>
