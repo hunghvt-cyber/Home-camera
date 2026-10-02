@@ -31,7 +31,7 @@ groups={}
 for f in src.glob("*.mp4"):
   m=rx.fullmatch(f.name)
   if not m or f.stat().st_mtime>cutoff: continue
-  date=f"{m.group(2)[:4]}-{m.group(2)[4:6]}-{m.group(2)[6:]}"
+  date=f"{m.group(1)[:4]}-{m.group(1)[4:6]}-{m.group(1)[6:]}"
   if date in full or f.name in keep_by_date.get(date,set()):
     groups.setdefault(date[:7],[]).append(f.name)
 for ym,names in groups.items():
