@@ -1,99 +1,119 @@
-# Home Camera Viewer
+# Home Camera
 
-A lightweight, self-hosted web viewer for local MP4 camera recordings.
+A lightweight, self-hosted camera stack for a small NAS: RTSP recording,
+optional ONVIF motion events, event-driven cloud archive, local retention, and
+the Viewer V2 web UI.
 
-## Scope
+This is the generalized public/rebuildable project. The private
+tapo-nas-lab repository remains the source of truth for the current production
+NAS deployment.
 
-This repository is the clean public Viewer V2 distribution. The complete operational NAS repository remains the source of truth for the user's system.
+## Architecture
 
-This repository intentionally excludes camera credentials, NAS addresses, production recorder configuration, ONVIF event-logger deployment, backup/retention jobs, real recordings, private archive catalogs, and secrets.
+RTSP camera
+  -> recorder/ (FFmpeg, 300-second MP4 segments)
+  -> recordings/
 
-## Features
+ONVIF camera
+  -> event-logger/ (optional)
+  -> events/*.jsonl
+  -> backup/ selects event-backed segments
+  -> Google Drive/rclone archive
 
-- daily camera timeline
-- recording segment indexing with FFmpeg/ffprobe
-- event-to-segment resolution
-- HTTP byte-range playback for MP4
-- optional archive catalog lookup
-- optional on-demand archive restore through rclone
-- lightweight browser UI
-- portable FFmpeg recorder with user-systemd supervision
+daily maintenance
+  -> backup
+  -> retention audit
+  -> local 7-day cleanup
 
-## Requirements
+Viewer
+  -> local recordings first
+  -> optional archive catalog/rclone fallback
+  -> HTTP Range playback
+
+## Components
+
+- recorder: portable FFmpeg + user-systemd recorder
+- event-logger: optional ONVIF Notify -> JSONL logger
+- backup: event-driven rclone archive
+- retention: conservative local 7-day cleanup
+- maintenance: ordered backup/retention orchestration
+- viewer: lightweight timeline/event/range-playback web viewer
+
+## Deployment requirements
 
 - Linux
 - Python 3.11+
-- FFmpeg (ffprobe) for recording indexing
-- rclone only when archive fallback is enabled
+- FFmpeg/ffprobe
+- rclone for cloud archive features
+- Python packages only for event-logger: aiohttp and onvif-zeep
 
-The viewer core uses Python's standard library; no Python package installation is required for the core viewer.
+No production credentials, private IPs, recordings, event logs, archive
+catalogs, or rclone configuration belong in Git.
 
-## Layout
+## Repository layout
 
-Home-camera/
-  recorder/
-    record.sh
-    config.example
-    systemd/tapo-recorder@.service
-    README.md
-  viewer/
-    viewer.py
-    resolver.py
-    range_utils.py
-    archive.py
-    time_utils.py
-    index.html
-    test_*.py
-  recording_indexer.py
-  archive_catalog.py
-  README.md
-  LICENSE
+    recorder/
+    event-logger/
+    backup/
+    retention/
+    maintenance/
+    viewer/
+    recording_indexer.py
+    archive_catalog.py
+    config/
 
-## Expected deployment layout
+## Configuration boundary
 
-<project>/
-  viewer/
-  recordings/
-    cam1/
-    cam2/
-  metadata/
-  events/
-    cam1-events.jsonl
-    cam2-events.jsonl
+Use private environment/config files for:
 
-Configure deployment paths with TAPO_ROOT, TAPO_RECORDINGS_DIR, TAPO_METADATA_DIR, TAPO_EVENTS_DIR, TAPO_ARCHIVE_CATALOG_DIR, TAPO_ARCHIVE_REMOTE_BASE, and TAPO_VIEWER_PORT.
+- camera IP/hostname
+- camera username/password
+- RTSP URL
+- ONVIF receiver URL
+- local storage paths
+- rclone remote name/configuration
+- Telegram credentials, if reporting is enabled
 
-## Run
+Example configuration files are safe templates only.
 
-From the project root, set the deployment paths and run:
+## Typical setup
+
+1. Clone the repository to the NAS.
+2. Configure one recorder environment per camera.
+3. Install the user-systemd recorder units and enable Linger.
+4. If supported by the camera, configure and test ONVIF Event Logger.
+5. Configure rclone and run backup in audit mode.
+6. Review retention output before enabling deletion.
+7. Enable the daily maintenance timer.
+8. Configure Viewer paths and start the Viewer.
+
+Each component has its own README. Production deployments should adapt paths
+and service names rather than copying the private NAS configuration verbatim.
+
+## Safety boundaries
+
+- Viewer does not delete recordings.
+- Backup does not delete local recordings.
+- Retention does not delete cloud archive objects.
+- Maintenance runs retention only after backup succeeds.
+- Credentials stay outside Git.
+- Event Logger is optional and does not own recorder lifecycle.
+
+## Viewer
+
+Viewer V2 supports daily timelines, event-to-segment resolution, local MP4
+playback, HTTP byte ranges, and optional archive fallback.
+
+Run:
 
     python3 viewer/viewer.py
 
-The default HTTP port is 8080.
+Default port: 8080.
 
-Recording filenames are expected in the form cam1-YYYYMMDD-HHMMSS.mp4 or cam2-YYYYMMDD-HHMMSS.mp4.
-
-## Tests
+Tests:
 
     cd viewer
     python3 -m unittest discover -v
-
-## Archive fallback
-
-Archive fallback is optional. archive_catalog.py builds a local catalog from an rclone remote. viewer/archive.py can restore a missing MP4 into the local recordings tree when requested.
-
-No cloud credentials belong in this repository.
-
-## Design principles
-
-- Keep the viewer lightweight.
-- Keep recorder and event-logger responsibilities separate.
-- Do not require ONVIF for playback.
-- Prefer local recordings.
-- Resolve events by timestamp rather than trusting stale segment hints.
-- Never guess an unresolved event.
-- Use HTTP Range requests so browsers can seek inside MP4 files.
-- Keep deployment-specific paths and secrets outside Git.
 
 ## License
 
