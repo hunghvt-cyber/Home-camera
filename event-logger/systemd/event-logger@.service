@@ -1,0 +1,12 @@
+[Unit]
+Description=Home Camera ONVIF Event Logger (%i)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/home-camera/%i.env
+ExecStart=%h/Home-camera/event-logger/event_logger.py
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=default.target
