@@ -1,0 +1,13 @@
+[Unit]
+Description=Home Camera daily backup and retention
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Home-camera
+Environment=TAPO_ROOT=%h/Home-camera
+ExecStart=%h/Home-camera/maintenance/daily-maintenance.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=31min
