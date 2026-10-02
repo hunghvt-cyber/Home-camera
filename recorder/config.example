@@ -1,0 +1,5 @@
+# Copy to a private environment file; never commit real credentials.
+TAPO_CAMERA_NAME=cam1
+TAPO_RTSP_URL=rtsp://USERNAME:PASSWORD@CAMERA_HOST:554/STREAM_PATH
+TAPO_RECORDINGS_DIR=/srv/home-camera/recordings
+TAPO_SEGMENT_SECONDS=300
