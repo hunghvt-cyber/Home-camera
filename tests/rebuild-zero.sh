@@ -14,6 +14,17 @@ command -v bash >/dev/null || fail "bash missing"
 python3 -m compileall -q "$ROOT" || fail "python compile"
 pass "python compile"
 
+if [ "${HOME_CAMERA_INSTALL_DEPS:-0}" = 1 ]; then
+  python3 -m venv "$TMP/venv"
+  "$TMP/venv/bin/python" -m pip install --quiet --disable-pip-version-check -r "$ROOT/event-logger/requirements.txt"
+  "$TMP/venv/bin/python" - <<'PY'
+import aiohttp
+from onvif import ONVIFCamera
+print("EVENT_LOGGER_IMPORTS=PASS")
+PY
+  pass "event-logger dependencies"
+fi
+
 while IFS= read -r f; do
   bash -n "$f" || fail "bash syntax: $f"
 done < <(find "$ROOT" -type f -name '*.sh' -print)
