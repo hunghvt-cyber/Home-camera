@@ -1,0 +1,5 @@
+BACKUP_COMMAND="$HOME/Home-camera/backup/tapo-backup.sh"
+TAPO_ARCHIVE_REMOTE_BASE="tapo-gdrive:Tapo-Archive"
+TAPO_RECORDINGS="$HOME/Home-camera/recordings"
+TAPO_RETENTION_DAYS=7
+TAPO_MAINTENANCE_APPLY=0
