@@ -17,6 +17,7 @@ This repository intentionally excludes camera credentials, NAS addresses, produc
 - optional archive catalog lookup
 - optional on-demand archive restore through rclone
 - lightweight browser UI
+- portable FFmpeg recorder with user-systemd supervision
 
 ## Requirements
 
@@ -30,6 +31,11 @@ The viewer core uses Python's standard library; no Python package installation i
 ## Layout
 
 Home-camera/
+  recorder/
+    record.sh
+    config.example
+    systemd/tapo-recorder@.service
+    README.md
   viewer/
     viewer.py
     resolver.py
