@@ -6,7 +6,7 @@ Wants=default.target
 [Service]
 Type=simple
 EnvironmentFile=%h/.config/home-camera/%i.env
-ExecStart=%h/Home-camera/recorder/record.sh
+ExecStart=/bin/bash %h/Home-camera/recorder/record.sh
 Restart=always
 RestartSec=5
 
