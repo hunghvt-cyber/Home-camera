@@ -8,3 +8,7 @@ events/
 metadata/
 *.env
 .env
+
+config/daily-maintenance.conf
+state/
+maintenance-log/
