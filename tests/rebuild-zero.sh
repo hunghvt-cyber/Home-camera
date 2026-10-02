@@ -64,7 +64,7 @@ OLD3="$TESTROOT/recordings/cam1/cam1-20261001-001000.mp4"
 printf 'aaaa' > "$OLD1"
 printf 'bbbb' > "$OLD2"
 printf 'cccc' > "$OLD3"
-touch -d '2 hours ago' "$OLD1" "$OLD2" "$OLD3"
+touch -d '8 days ago' "$OLD1" "$OLD2" "$OLD3"
 
 cat > "$TESTROOT/events/cam1-events.jsonl" <<EOF
 {"camera":"cam1","type":"motion","event_local":"2026-10-01T00:01:00+07:00","segment":"cam1-20261001-000000.mp4"}
