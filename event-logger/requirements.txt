@@ -1,2 +1,2 @@
 aiohttp
-onvif-zeep
+onvif-zeep-async==4.3.0
